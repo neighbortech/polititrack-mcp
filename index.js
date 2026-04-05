@@ -321,5 +321,93 @@ server.tool(
 
 // ── Start server ───────────────────────────────────────
 
+// ── Tool: entity_timeline (PROPRIETARY) ────────────────
+
+server.tool(
+  "entity_timeline",
+  "Get the historical timeline of an entity's political donation activity. Shows how donation patterns, party splits, and top recipients changed over time. This data does NOT exist on FEC.gov — PolitiTrack captures daily snapshots that create an irreplaceable time-series dataset.",
+  {
+    name: z.string().describe("Entity name (donor, PAC, or politician)"),
+    days: z.number().optional().default(365).describe("Number of days of history"),
+  },
+  async ({ name, days }) => {
+    try {
+      const data = await apiFetch(`/api/v1/timeline/${encodeURIComponent(name)}`, { days });
+      let text = `# Timeline: ${name}\n\nPeriod: Last ${days} days\n`;
+      text += `Changes detected: ${data.changes_detected || 0}\n`;
+      text += `Snapshots: ${(data.snapshots || []).length}\n\n`;
+      if (data.snapshots && data.snapshots.length > 0) {
+        for (const s of data.snapshots) {
+          text += `• ${s.snapshot_date}: Total ${formatMoney(s.total_contributed || 0)}\n`;
+        }
+      } else {
+        text += `Timeline data is building — snapshots are captured daily. Check back as the dataset grows.\n`;
+      }
+      text += `\n*This is proprietary PolitiTrack data not available from FEC.gov.*`;
+      return { content: [{ type: "text", text }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  }
+);
+
+// ── Tool: vote_alignment (PROPRIETARY) ─────────────────
+
+server.tool(
+  "vote_alignment",
+  "Check how often a politician votes in their donors' interests. Returns alignment rate vs. baseline, showing the statistical correlation between donations and voting patterns. Proprietary scoring model that improves with every tracked vote.",
+  {
+    politician_name: z.string().describe("Politician's name"),
+  },
+  async ({ politician_name }) => {
+    try {
+      const data = await apiFetch(`/api/v1/vote-alignment/${encodeURIComponent(politician_name)}`);
+      let text = `# Vote Alignment: ${politician_name}\n\n`;
+      if (data.alignment_rate) {
+        text += `Alignment rate: ${(data.alignment_rate * 100).toFixed(1)}%\n`;
+        text += `Baseline rate: ${(data.baseline_rate * 100).toFixed(1)}%\n`;
+        text += `Influence delta: +${(data.influence_delta * 100).toFixed(1)} percentage points\n`;
+        text += `Votes tracked: ${data.votes_tracked}\n`;
+      } else {
+        text += `Alignment scoring is building — requires ongoing vote tracking. Accuracy improves with each congressional vote.\n`;
+      }
+      text += `\n*Proprietary PolitiTrack scoring. Correlation does not imply causation.*`;
+      return { content: [{ type: "text", text }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  }
+);
+
+// ── Tool: find_connections (PROPRIETARY) ────────────────
+
+server.tool(
+  "find_connections",
+  "Find validated multi-source connections for an entity. Cross-references FEC donations, Congress.gov votes, USASpending contracts, and Senate lobbying disclosures to discover donation-to-vote, donation-to-contract, and revolving-door connections that don't appear in any single database.",
+  {
+    entity_name: z.string().describe("Entity name to investigate"),
+  },
+  async ({ entity_name }) => {
+    try {
+      const data = await apiFetch(`/api/v1/connections/${encodeURIComponent(entity_name)}`);
+      let text = `# Connections: ${entity_name}\n\n`;
+      text += `Data sources cross-referenced: ${(data.data_sources_cross_referenced || []).join(", ")}\n\n`;
+      if (data.connections && data.connections.length > 0) {
+        for (const c of data.connections) {
+          text += `• ${c.type}: ${c.entity_a?.name} → ${c.entity_b?.name} (strength: ${c.strength}/100)\n`;
+        }
+      } else {
+        text += `Connection discovery is ongoing. AI analyzes new filings daily and connections are verified by humans.\n`;
+      }
+      text += `\n*Proprietary PolitiTrack analysis. Connections represent correlations, not proven causation.*`;
+      return { content: [{ type: "text", text }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  }
+);
+
+// ── Start server ───────────────────────────────────────
+
 const transport = new StdioServerTransport();
 await server.connect(transport);
